@@ -60,18 +60,14 @@ namespace TixFactory.RepositoryParser
 		/// Gets a property value by property name from the <see cref="ProjectContents"/>.
 		/// </summary>
 		/// <remarks>
-		/// Casing on the <paramref name="propertyName"/> is ignored.
-		/// 
-		/// if <paramref name="followDependentProperties"/> is <c>true</c> the dependencies of the property being read are also followed.
-		/// For example if the property value is "Hello_$(Name)" $(Name) will also be parsed. If $(Name) is set to "World" the returned value will be "Hello_World".
-		/// If the dependent property does not exist the value will not be replaced.
+		/// if <paramref name="raw"/> is <c>true</c> the property value is not evaluated.
 		/// </remarks>
 		/// <param name="propertyName">The property name to get the value of.</param>
-		/// <param name="followDependentProperties">Whether or not to follow the dependencies of the property.</param>
+		/// <param name="raw">Whether or not the property value should be evaluated.</param>
 		/// <returns>The property value (or <c>null</c> if the property does not exist).</returns>
 		/// <exception cref="ArgumentException">
 		/// - <paramref name="propertyName"/> is null or whitespace.
 		/// </exception>
-		string GetPropertyValue(string propertyName, bool followDependentProperties);
+		string GetPropertyValue(string propertyName, bool raw);
 	}
 }

@@ -1,21 +1,29 @@
-﻿using System.Collections.Generic;
+﻿using Microsoft.Build.Evaluation;
+using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Text.RegularExpressions;
 using System.Xml.Linq;
 
 namespace TixFactory.RepositoryParser
 {
+	/// <inheritdoc cref="IProject"/>
 	internal class Project : IProject
 	{
 		private const string _AssemblyNameTagName = "AssemblyName";
 		private const string _TargetFrameworkTagName = "TargetFramework";
 		private const string _TargetFrameworksTagName = "TargetFrameworks";
+		private const string _DllReferenceTagName = "Reference";
+		private const string _ProjectReferenceTagName = "ProjectReference";
+		private const string _PackageReferenceTagName = "PackageReference";
+		private const string _VersionMetadataName = "Version";
+		private const string _HintPathMetadataName = "HintPath";
 
-		private readonly Regex _PropertyRegex = new Regex(@"\$\((\w+)\)");
 		private readonly Microsoft.Build.Evaluation.Project _MsProject;
 		private readonly ISet<IProject> _ProjectDependencies;
 		private readonly ISet<ProjectReference> _ProjectReferences;
+		private readonly ISet<DllReference> _DllReferences;
+		private readonly ISet<PackageReference> _PackageReferences;
 
 		/// <inheritdoc cref="IProject.Name"/>
 		public string Name { get; }
@@ -30,13 +38,13 @@ namespace TixFactory.RepositoryParser
 		public IReadOnlyCollection<string> TargetFrameworks { get; }
 
 		/// <inheritdoc cref="IProject.ProjectDependencies"/>
-		public IReadOnlyCollection<IProject> ProjectDependencies { get; }
+		public IReadOnlyCollection<IProject> ProjectDependencies => _ProjectDependencies.ToArray();
 
 		/// <inheritdoc cref="IProject.PackageReferences"/>
-		public IReadOnlyCollection<IPackageReference> PackageReferences { get; }
+		public IReadOnlyCollection<IPackageReference> PackageReferences => _PackageReferences.ToArray();
 
 		/// <inheritdoc cref="IProject.DllReferences"/>
-		public IReadOnlyCollection<IDllReference> DllReferences { get; }
+		public IReadOnlyCollection<IDllReference> DllReferences => _DllReferences.ToArray();
 
 		/// <inheritdoc cref="IProject.ProjectReferences"/>
 		public IReadOnlyCollection<IProjectReference> ProjectReferences => _ProjectReferences.ToArray();
@@ -48,55 +56,153 @@ namespace TixFactory.RepositoryParser
 				throw new FileNotFoundException($"{nameof(filePath)} does not match valid file path.", filePath);
 			}
 
-			FilePath = filePath;
+			Microsoft.Build.Evaluation.Project msProject;
+			try
+			{
+				msProject = new Microsoft.Build.Evaluation.Project(filePath, null, null, ProjectCollection.GlobalProjectCollection, ProjectLoadSettings.IgnoreMissingImports);
+				_MsProject = msProject;
+			}
+			catch (Exception e)
+			{
+				throw new ArgumentException($"'{nameof(filePath)}' could not be parsed as project.", nameof(filePath), e);
+			}
 
-			var projectFileContents = File.ReadAllText(filePath);
-			ProjectContents = XElement.Parse(projectFileContents, LoadOptions.PreserveWhitespace);
-
-			var msProject = new Microsoft.Build.Evaluation.Project(filePath);
-			_MsProject = msProject;
-
-			Name = GetAssemblyName(filePath);
+			FilePath = msProject.FullPath.Replace('\\', '/');
+			ProjectContents = XElement.Parse(msProject.Xml.RawXml, LoadOptions.PreserveWhitespace);
+			Name = GetPropertyValue(_AssemblyNameTagName, raw: false);
+			TargetFrameworks = ParseTargetFrameworks();
 
 			_ProjectDependencies = new HashSet<IProject>();
-			_ProjectReferences = new HashSet<ProjectReference>();
+			_ProjectReferences = ParseProjectReferences();
+			_DllReferences = ParseDllReferences();
+			_PackageReferences = ParsePackageReferences();
 		}
 
 		/// <inheritdoc cref="IProject.GetPropertyValue"/>
-		public string GetPropertyValue(string propertyName, bool followDependentProperties)
+		public string GetPropertyValue(string propertyName, bool raw)
 		{
-			return null;
+			var property = _MsProject.GetProperty(propertyName);
+			if (property == null)
+			{
+				return null;
+			}
+
+			if (raw)
+			{
+				return property.UnevaluatedValue;
+			}
+
+			return property.EvaluatedValue;
 		}
 
 		internal void LoadRepository(IReadOnlyCollection<IProject> allProjects)
 		{
 			foreach (var project in allProjects)
 			{
-				if (PackageReferences.Any(p => p.Name == project.Name))
+				var packageReference = _PackageReferences.FirstOrDefault(p => p.Name == project.Name);
+				if (packageReference != null)
 				{
+					packageReference.Project = project;
 					_ProjectDependencies.Add(project);
+
+					continue;
 				}
-				else if (DllReferences.Any(p => p.Name == project.Name))
+
+				var dllReference = _DllReferences.FirstOrDefault(p => p.Name == project.Name);
+				if (dllReference != null)
 				{
+					dllReference.Project = project;
 					_ProjectDependencies.Add(project);
+
+					continue;
 				}
-				else
+
+				var projectReference = _ProjectReferences.FirstOrDefault(p => p.ProjectFilePath == project.FilePath);
+				if (projectReference != null)
 				{
-					// TODO: Project references
+					projectReference.Project = project;
+					projectReference.Name = project.Name;
+					_ProjectDependencies.Add(project);
+
+					continue;
 				}
 			}
 		}
 
-		private string GetAssemblyName(string filePath)
+		private ISet<PackageReference> ParsePackageReferences()
 		{
-			var assemblyName = GetPropertyValue(_AssemblyNameTagName, followDependentProperties: true);
+			var packageReferences = new HashSet<PackageReference>();
 
-			if (string.IsNullOrWhiteSpace(assemblyName))
+			foreach (var item in _MsProject.GetItems(_PackageReferenceTagName))
 			{
-				assemblyName = Path.GetFileNameWithoutExtension(filePath);
+				var version = item.GetMetadata(_VersionMetadataName);
+				var packageReference = new PackageReference(item.EvaluatedInclude, version?.EvaluatedValue, version?.UnevaluatedValue);
+				packageReferences.Add(packageReference);
 			}
 
-			return assemblyName;
+			return packageReferences;
+		}
+
+		private ISet<ProjectReference> ParseProjectReferences()
+		{
+			var projectReferences = new HashSet<ProjectReference>();
+
+			foreach (var item in _MsProject.GetItems(_ProjectReferenceTagName))
+			{
+				var projectFilePath = Path.GetFullPath(item.EvaluatedInclude, _MsProject.DirectoryPath).Replace('\\', '/');
+				projectReferences.Add(new ProjectReference(projectFilePath, item.EvaluatedInclude));
+			}
+
+			return projectReferences;
+		}
+
+		private ISet<DllReference> ParseDllReferences()
+		{
+			var dllReferences = new HashSet<DllReference>();
+
+			foreach (var item in _MsProject.GetItems(_DllReferenceTagName))
+			{
+				string name;
+				var hintPath = item.GetMetadata(_HintPathMetadataName);
+
+				if (string.IsNullOrWhiteSpace(hintPath?.EvaluatedValue))
+				{
+					name = item.EvaluatedInclude;
+				}
+				else
+				{
+					name = Path.GetFileNameWithoutExtension(hintPath.EvaluatedValue);
+				}
+
+				var dllReference = new DllReference(name, hintPath?.EvaluatedValue);
+				dllReferences.Add(dllReference);
+			}
+
+			return dllReferences;
+		}
+
+		private IReadOnlyCollection<string> ParseTargetFrameworks()
+		{
+			var targetFrameworks = new HashSet<string>();
+
+			var targetFramework = GetPropertyValue(_TargetFrameworkTagName, raw: false);
+			if (string.IsNullOrWhiteSpace(targetFramework))
+			{
+				var targetFrameworksCsv = GetPropertyValue(_TargetFrameworksTagName, raw: false);
+				foreach (var framework in targetFrameworksCsv.Split(';'))
+				{
+					if (!string.IsNullOrWhiteSpace(framework))
+					{
+						targetFrameworks.Add(framework.Trim());
+					}
+				}
+			}
+			else
+			{
+				targetFrameworks.Add(targetFramework);
+			}
+
+			return targetFrameworks;
 		}
 	}
 }

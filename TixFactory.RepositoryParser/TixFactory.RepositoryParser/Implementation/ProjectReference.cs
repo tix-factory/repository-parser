@@ -1,32 +1,42 @@
-﻿using System.IO;
+﻿using System;
+using System.IO;
 
 namespace TixFactory.RepositoryParser
 {
 	/// <inheritdoc cref="IProjectReference"/>
 	internal class ProjectReference : ProjectDependency, IProjectReference
 	{
-		/// <inheritdoc cref="IProjectReference.Project"/>
-		public IProject Project { get; internal set; }
-
 		/// <inheritdoc cref="IProjectReference.ProjectFilePath"/>
 		public string ProjectFilePath { get; }
+
+		/// <inheritdoc cref="IProjectReference.RawProjectFilePath"/>
+		public string RawProjectFilePath { get; }
 
 		/// <summary>
 		/// Initializes a new <see cref="ProjectReference"/>.
 		/// </summary>
-		/// <param name="projectFilePath">The referenced project file path.</param>
-		/// <exception cref="FileNotFoundException">
-		/// - <paramref name="projectFilePath"/> does not map to valid project file.
+		/// <param name="projectFilePath">The full project file path.</param>
+		/// <param name="rawProjectFilePath">The raw project file path from the reference.</param>
+		/// <exception cref="ArgumentException">
+		/// - <paramref name="rawProjectFilePath"/> is <c>null</c> or whitespace.
 		/// </exception>
-		public ProjectReference(string projectFilePath)
-			: base(Path.GetFileNameWithoutExtension(projectFilePath))
+		/// <exception cref="FileNotFoundException">
+		/// </exception>
+		public ProjectReference(string projectFilePath, string rawProjectFilePath)
 		{
-			if (!File.Exists(projectFilePath))
+			if (string.IsNullOrWhiteSpace(rawProjectFilePath))
 			{
-				throw new FileNotFoundException($"'{nameof(projectFilePath)}' does not map to valid project file path.", projectFilePath);
+				throw new ArgumentException("Value cannot be null or whitespace.", nameof(rawProjectFilePath));
 			}
 
+			if (!File.Exists(projectFilePath))
+			{
+				throw new FileNotFoundException($"'{nameof(projectFilePath)}' is not a valid file path.", projectFilePath);
+			}
+
+			Name = Path.GetFileNameWithoutExtension(projectFilePath);
 			ProjectFilePath = projectFilePath;
+			RawProjectFilePath = rawProjectFilePath;
 		}
 	}
 }
