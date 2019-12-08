@@ -10,6 +10,7 @@ echo "BUILD_NUMBER: $BUILD_NUMBER"
 if [ "$GITHUB_ACTIONS" = "true" ]; then configuration="Release"; else configuration="Debug"; fi
 
 slns=(
+	"TixFactory.RepositoryParser/TixFactory.RepositoryParser.sln"
 )
 
 echo "Building ${#slns[@]} solutions (configuration: $configuration)..."
