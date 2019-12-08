@@ -5,5 +5,9 @@
 		<RootPath>../../</RootPath>
 	</PropertyGroup>
 
-	<Import Project="$(RootPath)build/build.targets"/>
+	<Import Project="$(RootPath)build/build.targets" />
+
+	<ItemGroup>
+	  <PackageReference Include="Microsoft.Build.Framework" Version="16.4.0" />
+	</ItemGroup>
 </Project>
