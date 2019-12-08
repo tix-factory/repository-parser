@@ -1,5 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
@@ -14,6 +13,9 @@ namespace TixFactory.RepositoryParser
 		private const string _TargetFrameworksTagName = "TargetFrameworks";
 
 		private readonly Regex _PropertyRegex = new Regex(@"\$\((\w+)\)");
+		private readonly Microsoft.Build.Evaluation.Project _MsProject;
+		private readonly ISet<IProject> _ProjectDependencies;
+		private readonly ISet<ProjectReference> _ProjectReferences;
 
 		/// <inheritdoc cref="IProject.Name"/>
 		public string Name { get; }
@@ -37,50 +39,57 @@ namespace TixFactory.RepositoryParser
 		public IReadOnlyCollection<IDllReference> DllReferences { get; }
 
 		/// <inheritdoc cref="IProject.ProjectReferences"/>
-		public IReadOnlyCollection<IProjectReference> ProjectReferences { get; }
+		public IReadOnlyCollection<IProjectReference> ProjectReferences => _ProjectReferences.ToArray();
 
-		public Project(string filePath, XElement projectContents)
+		public Project(string filePath)
 		{
 			if (!File.Exists(filePath))
 			{
 				throw new FileNotFoundException($"{nameof(filePath)} does not match valid file path.", filePath);
 			}
 
-			ProjectContents = projectContents ?? throw new ArgumentNullException(nameof(projectContents));
-			Name = GetAssemblyName(filePath, projectContents);
 			FilePath = filePath;
-			TargetFrameworks = ParseTargetFrameworks(projectContents);
+
+			var projectFileContents = File.ReadAllText(filePath);
+			ProjectContents = XElement.Parse(projectFileContents, LoadOptions.PreserveWhitespace);
+
+			var msProject = new Microsoft.Build.Evaluation.Project(filePath);
+			_MsProject = msProject;
+
+			Name = GetAssemblyName(filePath);
+
+			_ProjectDependencies = new HashSet<IProject>();
+			_ProjectReferences = new HashSet<ProjectReference>();
 		}
 
 		/// <inheritdoc cref="IProject.GetPropertyValue"/>
 		public string GetPropertyValue(string propertyName, bool followDependentProperties)
 		{
-			var propertyTag = ProjectContents.Descendants().FirstOrDefault(e => propertyName.Equals(e.Name.LocalName, StringComparison.OrdinalIgnoreCase));
-			if (propertyTag == null)
-			{
-				return null;
-			}
-
-			var value = propertyTag.Value;
-			if (followDependentProperties && _PropertyRegex.IsMatch(value))
-			{
-				foreach (Match match in _PropertyRegex.Matches(value))
-				{
-					var dependentPropertyValue = GetPropertyValue(match.Groups[1].ToString(), followDependentProperties: true);
-					if (dependentPropertyValue != null)
-					{
-						value = value.Replace(match.Value, dependentPropertyValue);
-					}
-				}
-			}
-			
-			return value;
+			return null;
 		}
 
-		private string GetAssemblyName(string filePath, XElement projectElement)
+		internal void LoadRepository(IReadOnlyCollection<IProject> allProjects)
 		{
-			var assemblyNameElement = projectElement.Descendants().FirstOrDefault(e => e.Name.LocalName == _AssemblyNameTagName);
-			var assemblyName = assemblyNameElement?.Value.Trim();
+			foreach (var project in allProjects)
+			{
+				if (PackageReferences.Any(p => p.Name == project.Name))
+				{
+					_ProjectDependencies.Add(project);
+				}
+				else if (DllReferences.Any(p => p.Name == project.Name))
+				{
+					_ProjectDependencies.Add(project);
+				}
+				else
+				{
+					// TODO: Project references
+				}
+			}
+		}
+
+		private string GetAssemblyName(string filePath)
+		{
+			var assemblyName = GetPropertyValue(_AssemblyNameTagName, followDependentProperties: true);
 
 			if (string.IsNullOrWhiteSpace(assemblyName))
 			{
@@ -88,37 +97,6 @@ namespace TixFactory.RepositoryParser
 			}
 
 			return assemblyName;
-		}
-
-		private IReadOnlyCollection<string> ParseTargetFrameworks(XElement projectElement)
-		{
-			// https://docs.microsoft.com/en-us/dotnet/core/tools/csproj
-			// TagetFramework takes precedence over TargetFrameworks
-			var targetFrameworkTag = projectElement.Descendants().FirstOrDefault(e => e.Name.LocalName == _TargetFrameworkTagName);
-			var targetFramework = targetFrameworkTag?.Value.Trim();
-			var targetFrameworks = new HashSet<string>();
-
-			if (string.IsNullOrWhiteSpace(targetFramework))
-			{
-				var targetFrameworksTag = projectElement.Descendants().FirstOrDefault(e => e.Name.LocalName == _TargetFrameworksTagName);
-				if (!string.IsNullOrWhiteSpace(targetFrameworksTag?.Value))
-				{
-					foreach (var framework in targetFrameworksTag.Value.Split(';'))
-					{
-						var trimmedFramework = framework.Trim();
-						if (!string.IsNullOrWhiteSpace(trimmedFramework))
-						{
-							targetFrameworks.Add(trimmedFramework);
-						}
-					}
-				}
-			}
-			else
-			{
-				targetFrameworks.Add(targetFramework);
-			}
-
-			return targetFrameworks;
 		}
 	}
 }
