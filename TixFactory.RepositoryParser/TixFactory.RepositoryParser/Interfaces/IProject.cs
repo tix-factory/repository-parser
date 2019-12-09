@@ -25,6 +25,11 @@ namespace TixFactory.RepositoryParser
 		XElement ProjectContents { get; }
 
 		/// <summary>
+		/// The <see cref="ProjectType"/>.
+		/// </summary>
+		ProjectType Type { get; }
+
+		/// <summary>
 		/// Target frameworks.
 		/// </summary>
 		IReadOnlyCollection<string> TargetFrameworks { get; }

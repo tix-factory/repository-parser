@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<OutputType>Exe</OutputType>
+		<TargetFramework>netcoreapp2.1</TargetFramework>
+		<RootPath>../../</RootPath>
+		<IsPackable>false</IsPackable>
+	</PropertyGroup>
+
+	<Import Project="$(RootPath)build/build.targets" />
+
+	<ItemGroup>
+		<PackageReference Include="TixFactory.RepositoryParser" Version="$(PackageVersion)" />
+	</ItemGroup>
+
+	<ItemGroup>
+	  <EmbeddedResource Include="Templates\build.proj" />
+	</ItemGroup>
+</Project>

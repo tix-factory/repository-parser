@@ -18,6 +18,12 @@ namespace TixFactory.RepositoryParser
 		private const string _PackageReferenceTagName = "PackageReference";
 		private const string _VersionMetadataName = "Version";
 		private const string _HintPathMetadataName = "HintPath";
+		private const string _OutputTypeTagName = "OutputType";
+		private const string _ConsoleApplicationOutputType = "Exe";
+		private const string _IsPackablePropertyName = "IsPackable";
+		private const string _SdkAttributeName = "Sdk";
+		private const string _TestsIdentifierPackageName = "Microsoft.NET.Test.Sdk";
+		private const string _WebSdk = "Microsoft.NET.Sdk.Web";
 
 		private readonly Microsoft.Build.Evaluation.Project _MsProject;
 		private readonly ISet<IProject> _ProjectDependencies;
@@ -33,6 +39,9 @@ namespace TixFactory.RepositoryParser
 
 		/// <inheritdoc cref="IProject.ProjectContents"/>
 		public XElement ProjectContents { get; }
+
+		/// <inheritdoc cref="IProject.Type"/>
+		public ProjectType Type { get; }
 
 		/// <inheritdoc cref="IProject.TargetFrameworks"/>
 		public IReadOnlyCollection<string> TargetFrameworks { get; }
@@ -66,7 +75,7 @@ namespace TixFactory.RepositoryParser
 			{
 				throw new ArgumentException($"'{nameof(filePath)}' could not be parsed as project.", nameof(filePath), e);
 			}
-
+			
 			FilePath = msProject.FullPath.Replace('\\', '/');
 			ProjectContents = XElement.Parse(msProject.Xml.RawXml, LoadOptions.PreserveWhitespace);
 			Name = GetPropertyValue(_AssemblyNameTagName, raw: false);
@@ -76,6 +85,7 @@ namespace TixFactory.RepositoryParser
 			_ProjectReferences = ParseProjectReferences();
 			_DllReferences = ParseDllReferences();
 			_PackageReferences = ParsePackageReferences();
+			Type = ParseProjectType();
 		}
 
 		/// <inheritdoc cref="IProject.GetPropertyValue"/>
@@ -203,6 +213,33 @@ namespace TixFactory.RepositoryParser
 			}
 
 			return targetFrameworks;
+		}
+
+		private ProjectType ParseProjectType()
+		{
+			var sdkAttribute = ProjectContents?.Attributes().FirstOrDefault(a => _SdkAttributeName.Equals(a.Name.LocalName, StringComparison.OrdinalIgnoreCase));
+			if (_WebSdk.Equals(sdkAttribute?.Value, StringComparison.OrdinalIgnoreCase))
+			{
+				return ProjectType.WebApplication;
+			}
+
+			var outputType = GetPropertyValue(_OutputTypeTagName, raw: false);
+			if (_ConsoleApplicationOutputType.Equals(outputType?.Trim(), StringComparison.OrdinalIgnoreCase))
+			{
+				return ProjectType.ConsoleApplication;
+			}
+
+			if (PackageReferences.Any(r => r.Name == _TestsIdentifierPackageName))
+			{
+				var isPackable = GetPropertyValue(_IsPackablePropertyName, raw: false);
+				var notPackableValue = "false";
+				if (notPackableValue.Equals(isPackable, StringComparison.OrdinalIgnoreCase))
+				{
+					return ProjectType.Tests;
+				}
+			}
+
+			return ProjectType.Assembly;
 		}
 	}
 }
