@@ -12,7 +12,7 @@ namespace TixFactory.MsBuildProjectGenerator
 	public class ProjectBuilder : IProjectBuilder
 	{
 		private const string _BuildTagName = "MSBuild";
-		private const string _BuildTagTargets = "Build";
+		private const string _BuildTagTargets = "Restore;Build";
 		private const string _PublishTagTargets = "Publish";
 		private const string _TestTagTargets = "Test";
 		private const string _BuildTargetsAttributeName = "Targets";
@@ -64,13 +64,13 @@ namespace TixFactory.MsBuildProjectGenerator
 							buildProjects.Add(project);
 							break;
 					}
+				}
 
-					if (buildProjects.Any())
-					{
-						var buildTag = new XElement(buildTemplate);
-						buildTag.SetAttributeValue("Projects", string.Join(';', buildProjects.Select(p => p.FilePath)));
-						buildTemplate.Parent?.Add(buildTag);
-					}
+				if (buildProjects.Any())
+				{
+					var buildTag = new XElement(buildTemplate);
+					buildTag.SetAttributeValue("Projects", string.Join(';', buildProjects.Select(p => p.FilePath)));
+					buildTemplate.Parent?.Add(buildTag);
 				}
 			}
 
