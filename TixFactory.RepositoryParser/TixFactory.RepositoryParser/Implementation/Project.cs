@@ -11,6 +11,7 @@ namespace TixFactory.RepositoryParser
 	internal class Project : IProject
 	{
 		private const string _AssemblyNameTagName = "AssemblyName";
+		private const string _ProjectNamePropertyName = "MSBuildProjectName";
 		private const string _TargetFrameworkTagName = "TargetFramework";
 		private const string _TargetFrameworksTagName = "TargetFrameworks";
 		private const string _DllReferenceTagName = "Reference";
@@ -78,7 +79,7 @@ namespace TixFactory.RepositoryParser
 			
 			FilePath = msProject.FullPath.Replace('\\', '/');
 			ProjectContents = XElement.Parse(msProject.Xml.RawXml, LoadOptions.PreserveWhitespace);
-			Name = GetPropertyValue(_AssemblyNameTagName, raw: false);
+			Name = GetPropertyValue(_AssemblyNameTagName, raw: false) ?? GetPropertyValue(_ProjectNamePropertyName, raw: false); // It has been observed that building on ubuntu (Linux) yields no AssemblyName property. Not sure why as of right now.
 			TargetFrameworks = ParseTargetFrameworks();
 
 			_ProjectDependencies = new HashSet<IProject>();
