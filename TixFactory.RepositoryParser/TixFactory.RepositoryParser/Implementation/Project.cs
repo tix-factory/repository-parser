@@ -86,6 +86,17 @@ namespace TixFactory.RepositoryParser
 			_DllReferences = ParseDllReferences();
 			_PackageReferences = ParsePackageReferences();
 			Type = ParseProjectType();
+
+			if (Name == null)
+			{
+				var nullNameLog = $"Failed to parse assembly name.\n\tProject: {FilePath}\n\tProperties:";
+				foreach (var prop in msProject.AllEvaluatedProperties)
+				{
+					nullNameLog += $"\n\t\t{prop.Name}: {prop.EvaluatedValue}";
+				}
+
+				Console.WriteLine(nullNameLog);
+			}
 		}
 
 		/// <inheritdoc cref="IProject.GetPropertyValue"/>
