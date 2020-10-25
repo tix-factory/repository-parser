@@ -232,6 +232,13 @@ namespace TixFactory.RepositoryParser
 			var sdkAttribute = ProjectContents?.Attributes().FirstOrDefault(a => _SdkAttributeName.Equals(a.Name.LocalName, StringComparison.OrdinalIgnoreCase));
 			if (_WebSdk.Equals(sdkAttribute?.Value, StringComparison.OrdinalIgnoreCase))
 			{
+				var isPackable = GetPropertyValue(_IsPackablePropertyName, raw: false);
+				var isPackableValue = "true";
+				if (isPackableValue.Equals(isPackable, StringComparison.OrdinalIgnoreCase))
+				{
+					return ProjectType.Assembly;
+				}
+
 				return ProjectType.WebApplication;
 			}
 
